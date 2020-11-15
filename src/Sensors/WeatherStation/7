@@ -1,0 +1,308 @@
+//***************************************************************************
+// Copyright 2007-2020 Universidade do Porto - Faculdade de Engenharia      *
+// Laboratório de Sistemas e Tecnologia Subaquática (LSTS)                  *
+//***************************************************************************
+// This file is part of DUNE: Unified Navigation Environment.               *
+//                                                                          *
+// Commercial Licence Usage                                                 *
+// Licencees holding valid commercial DUNE licences may use this file in    *
+// accordance with the commercial licence agreement provided with the       *
+// Software or, alternatively, in accordance with the terms contained in a  *
+// written agreement between you and Faculdade de Engenharia da             *
+// Universidade do Porto. For licensing terms, conditions, and further      *
+// information contact lsts@fe.up.pt.                                       *
+//                                                                          *
+// Modified European Union Public Licence - EUPL v.1.1 Usage                *
+// Alternatively, this file may be used under the terms of the Modified     *
+// EUPL, Version 1.1 only (the "Licence"), appearing in the file LICENCE.md *
+// included in the packaging of this file. You may not use this work        *
+// except in compliance with the Licence. Unless required by applicable     *
+// law or agreed to in writing, software distributed under the Licence is   *
+// distributed on an "AS IS" basis, WITHOUT WARRANTIES OR CONDITIONS OF     *
+// ANY KIND, either express or implied. See the Licence for the specific    *
+// language governing permissions and limitations at                        *
+// https://github.com/LSTS/dune/blob/master/LICENCE.md and                  *
+// http://ec.europa.eu/idabc/eupl.html.                                     *
+//***************************************************************************
+// Author: Olav Vassbotn                                                    *
+//***************************************************************************
+
+// DUNE headers.
+#include <DUNE/DUNE.hpp>
+#include <random>
+
+namespace Sensors
+{
+  //! This is the implementation of a weather station in dune
+  //! It is intended to simulate windspeed, temperature and humidity
+  //! All simulated values will be from additive white noise,
+  //! The variation of simulated values can also be selected
+  //!
+  //!
+  //! @author Olav Vassbotn
+  namespace WeatherStation
+  {
+    using DUNE_NAMESPACES;
+
+    //! Power states
+
+    enum PowerState
+    {
+	//! Power off
+	PWR_OFF = 0,
+	//! Power on
+	PWR_ON  = 1
+    };
+
+    struct Arguments
+    {
+      //! Serial port of device
+      std::string uart_dev;
+
+      //! Baud rate
+      unsigned uart_baud;
+
+      //! Seed
+      int seed;
+
+      //! State of sensor
+      int state;
+
+      //! Initial temerature
+      float temp_sim;
+
+      //! Initial humidity 
+      float humidity_sim;
+
+      //! Initial windspeed
+      float windspeed_sim;
+
+      //! Initial wind direction
+      float winddirection_sim;
+
+      //! Initial wind turbulance
+      float windturbulance_sim;
+    };
+
+    struct Task: public DUNE::Tasks::Task
+    {
+      //! Constructor.
+      //! @param[in] name task name.
+      //! @param[in] ctx context.
+
+
+      //! Simulated temperature
+      float temp_sim;
+
+      //! Timeout temp.
+      int temp_tm;
+
+      //! Conflicting temparature
+      bool temp_conflicting = false;
+
+      //! Measured temperature
+      float m_temp;
+
+      //! Simulated humidity
+      float humidity_sim;
+
+      //! Timeout humidity
+      int humidity_tm;
+
+      //! Conflicting humidity
+      bool humidity_conflicting = false;
+
+      //! Measured humidity
+      float m_humidity;
+
+      //! Simulated windspeed
+      float windspeed_sim;
+
+      //! Initial wind direction
+      float winddirection_sim;
+
+      //! Initial wind turbulance
+      float windturbulance_sim;
+
+      //! Conflicting windspeed
+      bool windspeed_conflicting = false;
+
+      //! Measured windspeed
+      float m_windspeed;
+
+      //! Timeout temp.
+      int windspeed_tm;
+
+      //! Temperature entity id
+      unsigned m_temp_eid;
+
+      //! Temperature message
+      IMC::Temperature temperature_msg;
+
+      //! Humidity messgage
+      IMC::RelativeHumidity humidity_msg;
+      
+      //! Windspeed messgage
+      IMC::WindSpeed windspeed_mgs;
+
+      Arguments args;
+      std::default_random_engine generator;
+      std::normal_distribution<float> distribution{0,2.0};
+
+      Task(const std::string& name, Tasks::Context& ctx):
+        DUNE::Tasks::Task(name, ctx),
+	temp_tm(0),
+	windspeed_tm(0),
+	humidity_tm(0)
+      {
+	param("Serial Port - Device", args.uart_dev)
+	.defaultValue("1234")
+	.description("This is the serial port for communication");
+
+	param("Serial Port - Baud Rate", args.uart_baud)
+	.defaultValue("32000") // TODO Finne bedre baud rate
+	.description("This is the serial port baud rate");
+
+	param("Initial temperature value", args.temp_sim)
+	.defaultValue("20.0")
+	.description("This is the initial temperature value");
+
+	param("Initial humidity value", args.humidity_sim)
+	.defaultValue("10.0")
+	.minimumValue("0")
+	.maximumValue("100")
+	.description("This is the initial humidity value");
+
+	param("Initial windspeed value", args.windspeed_sim)
+	.defaultValue("0.0")
+	.description("This is the initial windspeed value");
+
+	param("Power mode", args.state)
+	.defaultValue("1")
+	.minimumValue("0")
+	.maximumValue("1")
+	.description("Power mode of sensor: 0 - Off, 1 - On");
+
+	bind<IMC::Temperature>(this);
+	bind<IMC::RelativeHumidity>(this);
+	bind<IMC::WindSpeed>(this);
+      }
+
+      void
+      consume(const IMC::Temperature* msg)
+      {
+	temp_tm = 0;
+	temp_sim = msg->value;
+      }
+
+      void
+      consume(const IMC::WindSpeed* msg)
+      {
+	windspeed_tm = 0;
+	windspeed_sim = msg->speed;
+      }
+      void
+      consume(const IMC::RelativeHumidity* msg)
+      {
+	humidity_tm = 0;
+	humidity_sim = msg->value;
+      }
+
+      //! Update internal state with new parameter values.
+      void
+      onUpdateParameters(void)
+      {
+	if (paramChanged(args.temp_sim))
+	  temp_sim = args.temp_sim;
+
+	if (paramChanged(args.humidity_sim))
+	  humidity_sim = args.humidity_sim;
+
+	if (paramChanged(args.windspeed_sim))
+	  windspeed_sim = args.windspeed_sim;
+      }
+
+      //! Reserve entity identifiers.
+      void
+      onEntityReservation(void)
+      {
+      }
+
+      //! Resolve entity names.
+      void
+      onEntityResolution(void)
+      {
+      }
+
+      //! Acquire resources.
+      void
+      onResourceAcquisition(void)
+      {
+      }
+
+      //! Initialize resources.
+      void
+      onResourceInitialization(void)
+      {
+      }
+
+      //! Release resources.
+      void
+      onResourceRelease(void)
+      {
+	//Memory::clear(humidity_msg);
+      }
+
+      //! Main loop.
+      void
+      onMain(void)
+      {
+        while (!stopping())
+        {
+	  //! Update simulated values
+	  if(temp_tm >= 5)
+	  {
+	    temp_sim += distribution(generator);
+	  }
+	  else temp_tm++;
+
+	  if(humidity_tm >= 5)
+	  {
+	    humidity_sim += distribution(generator);
+	    if (humidity_sim < 0)
+	      humidity_sim = 0;
+	    if (humidity_sim > 100)
+	      humidity_sim = 100;
+	    humidity_msg.value = humidity_sim;
+	  }
+	  else humidity_tm++;
+
+	  if(windspeed_sim >= 5)
+	  {
+	    windspeed_sim += distribution(generator);
+	    if (windspeed_sim < 0)
+	      windspeed_sim = 0;
+	    windspeed_mgs.speed = windspeed_sim;
+	  }
+	  else windspeed_tm++;
+
+
+          char buf[50];
+	  std::string str = "Temp: " + std::to_string(temp_sim);
+	  str += " Hum: " + std::to_string(humidity_sim);
+	  str += " Wind: " + std::to_string(windspeed_sim);
+	  str += " State: " + std::to_string(args.state);
+          
+          std::strcpy(buf, str.c_str());
+	  //war(buf);
+
+	  dispatch(humidity_msg);
+	  dispatch(windspeed_mgs);
+          waitForMessages(1.0);
+        }
+      }
+    };
+  }
+}
+
+DUNE_TASK
