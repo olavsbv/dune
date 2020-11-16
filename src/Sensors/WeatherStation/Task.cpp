@@ -178,7 +178,7 @@ namespace Sensors
 	.description("This is the initial temperature value");
 
 	param("Stay about temperature initual value", args.temp_stay_on)
-	.defaultValue("true")
+	.defaultValue("false")
 	.description("If true the temperature will not deviate from the initial value too much");
 
 	param("Initial humidity value", args.humidity_sim)
@@ -200,7 +200,7 @@ namespace Sensors
 	.description("This is the initial windspeed value");
 
 	param("Stay about wind's initual value", args.wind_stay_on)
-	.defaultValue("true")
+	.defaultValue("false")
 	.description("If true the wind speed and direction will not deviate from the initial value too much");
 
 	param("Temperature standard devaition", args.temp_deviation)
@@ -220,7 +220,7 @@ namespace Sensors
 	.description("The wind direction standard deviation in the simulation of wind direction");
 
 	param("Measurement standard devaition", args.measurement_deviation)
-	.defaultValue("2.0")
+	.defaultValue("0.5")
 	.description("The measurement standard deviation in the simulation of measurement");
 
 	param("Power mode", args.state)
